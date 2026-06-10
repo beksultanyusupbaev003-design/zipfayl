@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZIPdan DataMatrix - TEZKOR</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bwip-js@4.5.1/dist/bwip-js-min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f0f2f5;font-family:system-ui;padding:20px}
+.container{max-width:1300px;margin:0 auto}
+.card{background:#fff;border-radius:24px;padding:24px;margin-bottom:20px;box-shadow:0 4px 12px rgba(0,0,0,0.08)}
+h1{font-size:1.8rem;display:flex;align-items:center;gap:10px;margin-bottom:8px}
+h1 i{color:#0b5e7c}
+.badge{background:#0b5e7c;color:#fff;font-size:0.75rem;padding:4px 14px;border-radius:40px}
+.drop-area{border:2px dashed #94a3b8;border-radius:24px;padding:40px;text-align:center;cursor:pointer;transition:0.2s;background:#fafcff}
+.drop-area:hover{border-color:#0b5e7c;background:#eff6ff}
+.drop-area.drag{border-color:#16a34a;background:#f0fdf4}
+.btn{background:#0b5e7c;color:#fff;border:none;padding:10px 24px;border-radius:40px;font-weight:600;cursor:pointer;margin-top:16px}
+.btn:hover{background:#1a7899}
+.progress-card{background:#f1f5f9;border-radius:20px;padding:16px;margin-top:16px;display:none}
+.progress-bar{background:#cbd5e1;border-radius:30px;height:10px;overflow:hidden}
+.progress-fill{background:linear-gradient(90deg,#0b5e7c,#2d9cdb);height:10px;width:0%;border-radius:30px;transition:width 0.1s}
+.progress-text{font-size:0.85rem;color:#475569;margin-top:8px;text-align:center;font-weight:600}
+.stats{display:flex;justify-content:space-between;margin-top:12px;font-size:0.8rem;color:#5a6e85}
+.product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-top:20px}
+.product-card{background:#fff;border-radius:20px;border:1px solid #e2e8f0;overflow:hidden;cursor:pointer;transition:0.15s}
+.product-card:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,0.1);border-color:#0b5e7c}
+.preview{background:#fefce8;padding:16px;text-align:center;min-height:130px;display:flex;align-items:center;justify-content:center}
+.preview canvas{max-width:100px;max-height:100px;border-radius:8px}
+.product-name{font-weight:700;padding:12px;font-size:0.8rem;border-top:1px solid #e2e8f0;word-break:break-word;background:#fff;display:flex;justify-content:space-between}
+.code-count{background:#0b5e7c20;color:#0b5e7c;padding:2px 8px;border-radius:30px;font-size:0.7rem}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);justify-content:center;align-items:center;z-index:1000}
+.modal-content{background:#fff;border-radius:40px;max-width:90vw;padding:24px;text-align:center}
+.modal-content canvas{max-width:70vw;max-height:60vh;margin:16px auto;background:#fff;border-radius:16px;padding:12px}
+.close-btn{background:#1e293b;color:#fff;border:none;padding:8px 28px;border-radius:40px;margin-top:16px;cursor:pointer}
+.nav-btn{background:#0b5e7c;color:#fff;border:none;padding:8px 20px;border-radius:40px;margin:0 8px;cursor:pointer}
+.nav-btn:disabled{opacity:0.4;cursor:not-allowed}
+.footer{text-align:center;font-size:0.7rem;color:#94a3b8;margin-top:30px}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1><i>📦</i> ZIPdan DataMatrix <span class="badge" id="badge">0</span></h1>
+    <div class="drop-area" id="dropZone">
+      <div style="font-size:2rem; margin-bottom:8px">📂</div>
+      <div><strong>ZIP faylni tanlang yoki bu yerga torting</strong></div>
+      <div style="font-size:0.75rem; color:#5a6e85; margin-top:6px">*.zip — ichidagi fayl nomlari = mahsulotlar</div>
+      <input type="file" id="fileInput" accept=".zip" style="display:none">
+      <button class="btn" id="selectBtn">📁 Faylni tanlash</button>
+    </div>
+    <div class="progress-card" id="progressCard">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText">ZIP o‘qilmoqda...</div>
+    </div>
+    <div class="stats">
+      <span>📦 Mahsulotlar: <b id="prodCount">0</b></span>
+      <span>✅ Holat: <b id="statusText">Kutilmoqda</b></span>
+    </div>
+  </div>
+
+  <div id="productsGrid" class="product-grid"></div>
+  <div class="footer">⚡ Har bir mahsulotga bosing — DataMatrix kodni katta ko‘ring</div>
+</div>
+
+<div id="modal" class="modal">
+  <div class="modal-content">
+    <div id="modalTitle" style="font-weight:bold; font-size:1.2rem; word-break:break-word"></div>
+    <div id="modalCanvas"></div>
+    <div id="modalNav" style="margin-top:12px"></div>
+    <button class="close-btn" id="closeModal">Yopish</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const selectBtn = document.getElementById('selectBtn');
+  const badge = document.getElementById('badge');
+  const prodCountSpan = document.getElementById('prodCount');
+  const statusTextSpan = document.getElementById('statusText');
+  const productsGrid = document.getElementById('productsGrid');
+  const progressCard = document.getElementById('progressCard');
+  const progressFill = document.getElementById('progressFill');
+  const progressText = document.getElementById('progressText');
+  const modal = document.getElementById('modal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalCanvas = document.getElementById('modalCanvas');
+  const modalNav = document.getElementById('modalNav');
+  const closeModal = document.getElementById('closeModal');
+
+  let products = []; // [{name, dataUrl}]
+  let currentProductIndex = 0;
+  let currentModalIndex = 0;
+
+  // DataMatrix yaratish (async, lekin tez)
+  async function generateDataMatrixFast(text, scale = 3) {
+    return new Promise((resolve) => {
+      try {
+        const canvas = document.createElement('canvas');
+        bwipjs.toCanvas(canvas, {
+          bcid: 'datamatrix',
+          text: text,
+          scale: scale,
+          includetext: false,
+          padding: 4,
+          backgroundcolor: 'FFFFFF'
+        }, (err) => {
+          if (err) {
+            console.warn(err);
+            resolve(null);
+          } else {
+            resolve(canvas.toDataURL('image/png'));
+          }
+        });
+      } catch(e) {
+        resolve(null);
+      }
+    });
+  }
+
+  // ZIP ni TEZ o‘qish va mahsulotlarni chiqarish
+  async function processZipFast(zipFile) {
+    products = [];
+    productsGrid.innerHTML = '<div style="text-align:center;padding:40px">⏳ ZIP tahlil qilinmoqda...</div>';
+    progressCard.style.display = 'block';
+    progressFill.style.width = '0%';
+    statusTextSpan.innerText = 'ZIP o‘qilmoqda...';
+
+    try {
+      // 1. ZIP ni o‘qish (tez)
+      const zip = await JSZip.loadAsync(zipFile);
+      const fileNames = [];
+      
+      zip.forEach((relativePath, entry) => {
+        if (!entry.dir) {
+          let baseName = relativePath.split('/').pop();
+          if (baseName && baseName.trim()) fileNames.push(baseName);
+          else if (relativePath.trim()) fileNames.push(relativePath);
+        }
+      });
+
+      // Takrorlanmas nomlar
+      const uniqueNames = [...new Map(fileNames.map(n => [n, n])).values()];
+      const total = uniqueNames.length;
+
+      if (total === 0) {
+        productsGrid.innerHTML = '<div class="card" style="text-align:center">⚠️ ZIP ichida hech qanday fayl topilmadi</div>';
+        progressCard.style.display = 'none';
+        statusTextSpan.innerText = 'Xato: bo‘sh ZIP';
+        return;
+      }
+
+      progressText.innerText = `0 / ${total} — kodlar yaratilmoqda...`;
+      statusTextSpan.innerText = 'Kod yaratilmoqda...';
+
+      // 2. Har bir mahsulot uchun DataMatrix yaratish (progress bilan)
+      for (let i = 0; i < uniqueNames.length; i++) {
+        const name = uniqueNames[i];
+        
+        // Progresni yangilash (FOIZDA)
+        const percent = Math.round((i / total) * 100);
+        progressFill.style.width = percent + '%';
+        progressText.innerText = `${i+1} / ${total} (${percent}%) — ${name.length > 35 ? name.substring(0,32)+'...' : name}`;
+        
+        // Kod yaratish
+        const dataUrl = await generateDataMatrixFast(name, 2.8);
+        if (dataUrl) {
+          products.push({ name: name, dataUrl: dataUrl });
+        } else {
+          // Fallback: placeholder
+          products.push({ name: name, dataUrl: null });
+        }
+        
+        // Har 10 ta mahsulotda UI ni yangilash (tezlik uchun)
+        if ((i + 1) % 8 === 0 || i === total - 1) {
+          renderProductGridFast();
+        }
+        
+        // Mikro pauza (brauzerni bloklamaslik uchun, lekin tez)
+        if (i % 30 === 0) await new Promise(r => setTimeout(r, 1));
+      }
+
+      progressFill.style.width = '100%';
+      progressText.innerText = `✅ Tayyor! ${total} ta mahsulot`;
+      statusTextSpan.innerText = 'Tayyor';
+      badge.innerText = total;
+      prodCountSpan.innerText = total;
+      
+      setTimeout(() => {
+        progressCard.style.display = 'none';
+      }, 1200);
+      
+      renderProductGridFast();
+      
+    } catch(err) {
+      console.error(err);
+      productsGrid.innerHTML = '<div class="card" style="text-align:center;color:red">❌ ZIP fayl buzilgan yoki o‘qilmadi</div>';
+      progressCard.style.display = 'none';
+      statusTextSpan.innerText = 'Xatolik';
+    }
+  }
+
+  // Gridni tez chiqarish
+  function renderProductGridFast() {
+    if (products.length === 0) {
+      productsGrid.innerHTML = '<div class="card" style="text-align:center">📂 ZIP fayl yuklang</div>';
+      return;
+    }
+    
+    productsGrid.innerHTML = '';
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      const card = document.createElement('div');
+      card.className = 'product-card';
+      card.setAttribute('data-index', i);
+      
+      const previewDiv = document.createElement('div');
+      previewDiv.className = 'preview';
+      if (p.dataUrl) {
+        const img = document.createElement('img');
+        img.src = p.dataUrl;
+        img.style.width = '90px';
+        img.style.height = '90px';
+        previewDiv.appendChild(img);
+      } else {
+        previewDiv.innerHTML = '<div style="font-size:1.5rem">⚠️</div>';
+      }
+      
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'product-name';
+      const shortName = p.name.length > 25 ? p.name.substring(0,22) + '...' : p.name;
+      nameDiv.innerHTML = `<span title="${escapeHtml(p.name)}">${escapeHtml(shortName)}</span><span class="code-count">✓</span>`;
+      
+      card.appendChild(previewDiv);
+      card.appendChild(nameDiv);
+      
+      card.onclick = (function(idx) {
+        return function() { showModalProduct(idx); };
+      })(i);
+      
+      productsGrid.appendChild(card);
+    }
+  }
+
+  // Modalda katta kod ko'rsatish
+  async function showModalProduct(index) {
+    if (index < 0 || index >= products.length) return;
+    currentModalIndex = index;
+    const product = products[index];
+    if (!product) return;
+    
+    modalTitle.innerText = product.name;
+    modalCanvas.innerHTML = '<div style="padding:20px">⏳ Yuklanmoqda...</div>';
+    modalNav.innerHTML = '';
+    modal.style.display = 'flex';
+    
+    try {
+      const canvas = document.createElement('canvas');
+      await new Promise((resolve, reject) => {
+        bwipjs.toCanvas(canvas, {
+          bcid: 'datamatrix',
+          text: product.name,
+          scale: 5,
+          includetext: false,
+          padding: 10,
+          backgroundcolor: 'FFFFFF'
+        }, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      
+      modalCanvas.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = canvas.toDataURL('image/png');
+      img.style.maxWidth = '65vw';
+      img.style.maxHeight = '55vh';
+      img.style.borderRadius = '16px';
+      img.style.background = 'white';
+      img.style.padding = '12px';
+      modalCanvas.appendChild(img);
+      
+      // Navigatsiya
+      if (products.length > 1) {
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'nav-btn';
+        prevBtn.innerHTML = '◀ Oldingi';
+        prevBtn.disabled = index === 0;
+        prevBtn.onclick = () => showModalProduct(index - 1);
+        
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'nav-btn';
+        nextBtn.innerHTML = 'Keyingi ▶';
+        nextBtn.disabled = index === products.length - 1;
+        nextBtn.onclick = () => showModalProduct(index + 1);
+        
+        const counter = document.createElement('span');
+        counter.style.margin = '0 12px';
+        counter.style.fontWeight = 'bold';
+        counter.innerText = `${index+1} / ${products.length}`;
+        
+        modalNav.appendChild(prevBtn);
+        modalNav.appendChild(counter);
+        modalNav.appendChild(nextBtn);
+      }
+    } catch(err) {
+      modalCanvas.innerHTML = `<div style="color:red;padding:20px">Xatolik: ${err.message}</div>`;
+    }
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m] || m));
+  }
+
+  // Fayl yuklash
+  function handleFile(file) {
+    if (!file || !file.name.toLowerCase().endsWith('.zip')) {
+      alert('Faqat .zip fayl yuklang!');
+      return;
+    }
+    processZipFast(file);
+  }
+
+  // Drag & Drop
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag');
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag');
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  
+  selectBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => {
+    if (fileInput.files.length) handleFile(fileInput.files[0]);
+    fileInput.value = '';
+  });
+
+  // Modal yopish
+  function closeModalFunc() {
+    modal.style.display = 'none';
+    modalCanvas.innerHTML = '';
+    modalNav.innerHTML = '';
+  }
+  closeModal.addEventListener('click', closeModalFunc);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModalFunc(); });
+
+  // Boshlang'ich
+  renderProductGridFast();
+  badge.innerText = '0';
+  prodCountSpan.innerText = '0';
+})();
+</script>
+</body>
+</html>
